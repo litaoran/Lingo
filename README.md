@@ -25,20 +25,9 @@ Hold a shortcut, speak, let go: Lingo transcribes on your Mac and pastes the tex
 
 1. Download `Lingo-<version>-arm64.dmg` from the [latest release](https://github.com/litaoran/Lingo/releases/latest).
 2. Open the DMG and drag **Lingo** to **Applications**.
-3. Open Lingo the first time (see below).
+3. Open Lingo from Applications.
 
-### Opening Lingo the first time
-
-Lingo isn't signed with an Apple Developer ID yet, so macOS blocks it the first time you open it. Either:
-
-- Open Lingo once. When macOS says it can't verify the app, go to **System Settings → Privacy & Security**, scroll down, and click **Open Anyway** next to the message about Lingo. Confirm with your password.
-- Or remove the quarantine flag in Terminal:
-
-  ```bash
-  xattr -dr com.apple.quarantine /Applications/Lingo.app
-  ```
-
-You only need to do this once per version.
+Releases are signed with an Apple Developer ID and notarized by Apple, so macOS opens them without warnings.
 
 ### First launch
 
@@ -59,7 +48,7 @@ Then hold <kbd>⌥ Space</kbd> anywhere, speak, and release.
 
 Lingo does not need Screen Recording, Input Monitoring or Full Disk Access.
 
-**After updating Lingo:** because builds aren't signed with a Developer ID, macOS may keep an outdated Accessibility entry for the old version. If pasting stops working after an update, open **System Settings → Privacy & Security → Accessibility**, remove Lingo with **−**, and add it again.
+**Updating:** permissions carry over to new versions. Two exceptions need a one-time fix: upgrading from 0.1.0 (which wasn't signed with a Developer ID), and builds you compile yourself. If Lingo says Accessibility is off while System Settings shows it on, open **System Settings → Privacy & Security → Accessibility**, remove Lingo with **−**, then click **Open Settings** in Lingo and switch it on again.
 
 ## Models
 
@@ -100,10 +89,16 @@ Requirements: Xcode 26 or later, plus the Metal Toolchain component that MLX nee
 xcodebuild -downloadComponent MetalToolchain
 ```
 
-Then open `Lingo.xcodeproj` and run the **Lingo** scheme, or build a release DMG:
+Then open `Lingo.xcodeproj` and run the **Lingo** scheme, or build a DMG:
 
 ```bash
 scripts/build-release.sh
+```
+
+Local builds are ad-hoc signed. To produce a signed and notarized release, pass your Developer ID and a notarytool keychain profile:
+
+```bash
+SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" NOTARY_PROFILE=lingo-notary scripts/build-release.sh
 ```
 
 MLX's Metal shaders can only be compiled by Xcode or `xcodebuild`; `swift build` doesn't work.

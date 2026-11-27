@@ -162,7 +162,7 @@ private struct SetupChecklist: View {
                 }
             }
             ChecklistRow(done: axTrusted, title: "Allow Accessibility access",
-                         detail: "To paste the text into the app you're typing in") {
+                         detail: "To paste into the app you're typing in. Already on? Remove Lingo with − and add it again.") {
                 Button("Open Settings") {
                     Permissions.promptForAccessibility()
                     Permissions.openAccessibilitySettings()
@@ -328,7 +328,9 @@ private struct PermissionSettings: View {
                 PermissionRow(
                     granted: axTrusted,
                     title: "Accessibility",
-                    detail: "Lets Lingo press ⌘V to paste the transcript into the current app. Without it, the text is copied to the clipboard and you paste it yourself."
+                    detail: axTrusted
+                        ? "Lets Lingo press ⌘V to paste the transcript into the current app."
+                        : "Lets Lingo press ⌘V to paste the transcript into the current app. Without it, the text is only copied to the clipboard.\n\nAlready switched on in System Settings? That entry belongs to an older copy of Lingo. Select Lingo there, click −, then click Open Settings here and switch it on again."
                 ) {
                     Button("Open Settings") {
                         Permissions.promptForAccessibility()
@@ -336,7 +338,7 @@ private struct PermissionSettings: View {
                     }
                 }
             } footer: {
-                Text("After installing a new version of Lingo, macOS may keep an outdated Accessibility entry. If pasting stops working, remove Lingo from the list with − and add it again.")
+                Text("Permissions carry over when you update Lingo. If you built Lingo yourself or upgraded from version 0.1.0, you may need to remove Lingo from the Accessibility list with − and add it again once.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
