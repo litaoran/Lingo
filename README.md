@@ -8,9 +8,10 @@ Hold a shortcut, speak, let go: Lingo transcribes on your Mac and pastes the tex
 
 ## Features
 
-- **Global shortcuts.** Hold to talk (default <kbd>⌥ Space</kbd>), or press once to start and again to stop (default <kbd>⌥ ⇧ Space</kbd>). Both can be changed in Settings.
+- **One shortcut, two ways to talk.** Hold <kbd>⌥ Space</kbd>, speak, and release to paste. For longer dictation, tap it once to keep recording and tap again to finish. <kbd>Esc</kbd> cancels. The shortcut can be changed in Settings.
 - **Pastes into any app.** The transcript goes to the app you're typing in. Your clipboard is put back afterwards.
 - **Built for code-switching.** The default model, Qwen3-ASR-1.7B, keeps English words in English inside Chinese sentences.
+- **Ignores your speakers.** Echo cancellation keeps videos, music or calls playing on your Mac out of the transcript.
 - **Fully local.** Audio is recorded only while you dictate, transcribed on your Mac, and then discarded. No audio or text is uploaded and there is no analytics. The only network requests are model downloads from huggingface.co.
 - **Switchable models.** Pick, download and delete models from the menu bar. Each model's size is shown before you download it.
 - **Language setting.** Defaults to 中文 (Chinese), which handles mixed Chinese–English speech. English and Auto-detect are also available.
@@ -37,7 +38,7 @@ Lingo lives in the menu bar (microphone icon). On first launch it opens Settings
 2. **Allow microphone access.**
 3. **Allow Accessibility access** so Lingo can paste for you.
 
-Then hold <kbd>⌥ Space</kbd> anywhere, speak, and release.
+Then hold <kbd>⌥ Space</kbd> anywhere, speak, and release. To dictate something long without holding the key, tap <kbd>⌥ Space</kbd>, speak, and tap it again.
 
 ## Permissions
 

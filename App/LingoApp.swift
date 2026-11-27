@@ -129,6 +129,10 @@ struct MenuContent: View {
         }
         .disabled(state.phase == .transcribing || (state.phase == .idle && state.modelStatus != .ready))
 
+        if state.phase == .recording {
+            Button("Cancel Recording") { state.cancelRecording() }
+        }
+
         Divider()
 
         Menu("Model: \(state.selectedModel.displayName)") {

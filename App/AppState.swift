@@ -8,10 +8,12 @@ import SwiftUI
 let log = Logger(subsystem: "io.github.litaoran.Lingo", category: "app")
 
 extension KeyboardShortcuts.Name {
-    /// Hold to record, release to transcribe and paste.
-    static let holdToTalk = Self("holdToTalk", initial: .init(.space, modifiers: [.option]))
-    /// Press once to start recording, press again to transcribe and paste.
-    static let toggleRecording = Self("toggleRecording", initial: .init(.space, modifiers: [.option, .shift]))
+    /// The one dictation shortcut: hold to talk and release to paste, or tap
+    /// once to keep recording and tap again to finish. Keeps the "holdToTalk"
+    /// storage key so a shortcut customized in 0.1.x carries over.
+    static let dictate = Self("holdToTalk", initial: .init(.space, modifiers: [.option]))
+    /// Cancels the current recording. Registered only while recording.
+    static let cancelDictation = Self("cancelDictation", initial: .init(.escape))
 }
 
 /// Central state: model loading, the record → transcribe → paste pipeline,
@@ -35,8 +37,10 @@ final class AppState: ObservableObject {
     }
 
     private enum RecordingMode {
-        case hold
-        case toggle
+        /// The shortcut is down; it's a hold or a tap depending on when it's released.
+        case pressed
+        /// A tap locked recording on; it runs until the shortcut is pressed again.
+        case locked
     }
 
     // MARK: Published state
@@ -75,8 +79,11 @@ final class AppState: ObservableObject {
     private let hud = HUDController()
     let sounds = SoundPlayer()
     private let defaults = UserDefaults.standard
-    private var mode: RecordingMode = .hold
+    private var mode: RecordingMode = .pressed
     private var recordingStartedAt: Date?
+    private var keyDownAt: Date?
+    /// Releasing the shortcut sooner than this locks recording on instead of finishing it.
+    private let tapThreshold: TimeInterval = 0.3
     private var maxDurationTimer: Timer?
     private var loadTask: Task<Void, Never>?
     private var cancellables: Set<AnyCancellable> = []
@@ -130,9 +137,12 @@ final class AppState: ObservableObject {
     // MARK: Lifecycle
 
     func start() {
-        KeyboardShortcuts.onKeyDown(for: .holdToTalk) { [weak self] in self?.holdKeyDown() }
-        KeyboardShortcuts.onKeyUp(for: .holdToTalk) { [weak self] in self?.holdKeyUp() }
-        KeyboardShortcuts.onKeyDown(for: .toggleRecording) { [weak self] in self?.toggleKeyPressed() }
+        KeyboardShortcuts.onKeyDown(for: .dictate) { [weak self] in self?.dictateKeyDown() }
+        KeyboardShortcuts.onKeyUp(for: .dictate) { [weak self] in self?.dictateKeyUp() }
+        // Esc should only be taken from other apps while Lingo is recording.
+        KeyboardShortcuts.disable(.cancelDictation)
+        KeyboardShortcuts.onKeyDown(for: .cancelDictation) { [weak self] in self?.cancelRecording() }
+        KeyboardShortcuts.disable(.cancelDictation)
 
         if models.isInstalled(selectedModel) {
             loadSelectedModel()
@@ -211,21 +221,37 @@ final class AppState: ObservableObject {
 
     // MARK: Hotkeys
 
-    private func holdKeyDown() {
-        guard phase == .idle else { return }
-        mode = .hold
-        startRecording()
-    }
-
-    private func holdKeyUp() {
-        guard phase == .recording, mode == .hold else { return }
-        stopRecordingAndTranscribe()
-    }
-
-    private func toggleKeyPressed() {
+    private func dictateKeyDown() {
         switch phase {
         case .idle:
-            mode = .toggle
+            mode = .pressed
+            keyDownAt = Date()
+            startRecording()
+        case .recording where mode == .locked:
+            stopRecordingAndTranscribe()
+        default:
+            // Key repeat while holding, or a press while transcribing.
+            break
+        }
+    }
+
+    private func dictateKeyUp() {
+        guard phase == .recording, mode == .pressed else { return }
+        let held = Date().timeIntervalSince(keyDownAt ?? .distantPast)
+        if held < tapThreshold {
+            mode = .locked
+            log.info("Recording locked on by a tap")
+            if showIndicator { hud.show(.recording(locked: true), state: self) }
+        } else {
+            stopRecordingAndTranscribe()
+        }
+    }
+
+    /// Menu bar "Start Recording / Stop and Transcribe" item.
+    func toggleFromMenu() {
+        switch phase {
+        case .idle:
+            mode = .locked
             startRecording()
         case .recording:
             stopRecordingAndTranscribe()
@@ -234,9 +260,18 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// Menu bar "Start/Stop Recording" item.
-    func toggleFromMenu() {
-        toggleKeyPressed()
+    /// Discards the current recording without transcribing (Esc or the menu).
+    func cancelRecording() {
+        guard phase == .recording else { return }
+        KeyboardShortcuts.disable(.cancelDictation)
+        maxDurationTimer?.invalidate()
+        maxDurationTimer = nil
+        _ = recorder.stop()
+        audioLevel = 0
+        phase = .idle
+        log.info("Recording cancelled")
+        hud.show(.message("Cancelled", isError: false), state: self)
+        hud.hide(after: 1.0)
     }
 
     // MARK: Pipeline
@@ -283,9 +318,10 @@ final class AppState: ObservableObject {
         }
         phase = .recording
         recordingStartedAt = Date()
-        log.info("Recording started (\(self.mode == .hold ? "hold" : "toggle", privacy: .public), echo cancellation \(self.recorder.echoCancellationActive ? "on" : "off", privacy: .public))")
+        KeyboardShortcuts.enable(.cancelDictation)
+        log.info("Recording started (\(self.mode == .locked ? "locked" : "pressed", privacy: .public), echo cancellation \(self.recorder.echoCancellationActive ? "on" : "off", privacy: .public))")
         sounds.playStart(soundStyle)
-        if showIndicator { hud.show(.recording, state: self) }
+        if showIndicator { hud.show(.recording(locked: mode == .locked), state: self) }
 
         maxDurationTimer?.invalidate()
         maxDurationTimer = Timer.scheduledTimer(withTimeInterval: maximumDuration, repeats: false) { [weak self] _ in
@@ -297,6 +333,7 @@ final class AppState: ObservableObject {
     }
 
     private func stopRecordingAndTranscribe() {
+        KeyboardShortcuts.disable(.cancelDictation)
         maxDurationTimer?.invalidate()
         maxDurationTimer = nil
         let samples = recorder.stop()
@@ -362,6 +399,10 @@ final class AppState: ObservableObject {
 
     // MARK: Display
 
+    var dictateShortcutText: String {
+        KeyboardShortcuts.getShortcut(for: .dictate).map { "\($0)" } ?? "the shortcut"
+    }
+
     var menuBarSymbol: String {
         switch phase {
         case .recording: return "mic.fill"
@@ -383,8 +424,8 @@ final class AppState: ObservableObject {
         }
         switch modelStatus {
         case .ready:
-            if let shortcut = KeyboardShortcuts.getShortcut(for: .holdToTalk) {
-                return "Ready — hold \(shortcut) to dictate"
+            if let shortcut = KeyboardShortcuts.getShortcut(for: .dictate) {
+                return "Ready — hold \(shortcut) to dictate, or tap to lock"
             }
             return "Ready"
         case .loading:

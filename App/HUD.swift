@@ -7,7 +7,7 @@ import SwiftUI
 @MainActor
 final class HUDController {
     enum Content: Equatable {
-        case recording
+        case recording(locked: Bool)
         case transcribing
         case message(String, isError: Bool)
     }
@@ -34,7 +34,7 @@ final class HUDController {
 
     private func makePanel(state: AppState) -> NSPanel {
         let panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 360, height: 56),
+            contentRect: NSRect(x: 0, y: 0, width: 440, height: 56),
             styleMask: [.nonactivatingPanel, .borderless],
             backing: .buffered,
             defer: true
@@ -64,7 +64,7 @@ final class HUDController {
 
 @MainActor
 final class HUDModel: ObservableObject {
-    @Published var content: HUDController.Content = .recording
+    @Published var content: HUDController.Content = .recording(locked: false)
 }
 
 private struct HUDView: View {
@@ -74,10 +74,14 @@ private struct HUDView: View {
     var body: some View {
         HStack(spacing: 10) {
             switch model.content {
-            case .recording:
+            case .recording(let locked):
                 Circle().fill(.red).frame(width: 9, height: 9)
                 LevelMeter(level: state.audioLevel)
-                Text("Listening")
+                if locked {
+                    Text("Listening · \(state.dictateShortcutText) to finish, esc to cancel")
+                } else {
+                    Text("Listening")
+                }
             case .transcribing:
                 ProgressView().controlSize(.small)
                 Text("Transcribing")

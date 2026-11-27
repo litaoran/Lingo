@@ -83,13 +83,16 @@ private struct GeneralSettings: View {
                 }
             }
 
-            Section("Shortcuts") {
-                LabeledContent("Hold to talk") {
-                    KeyboardShortcuts.Recorder(for: .holdToTalk)
+            Section {
+                LabeledContent("Dictation shortcut") {
+                    KeyboardShortcuts.Recorder(for: .dictate)
                 }
-                LabeledContent("Press to start, press again to stop") {
-                    KeyboardShortcuts.Recorder(for: .toggleRecording)
-                }
+            } header: {
+                Text("Shortcut")
+            } footer: {
+                Text("Hold to talk and release to paste. For longer dictation, tap once to keep recording and tap again to finish. Press esc to cancel.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section {
