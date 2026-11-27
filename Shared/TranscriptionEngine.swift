@@ -49,26 +49,53 @@ actor TranscriptionEngine {
     }
 
     /// Transcribes 16 kHz mono samples. `language` is an ISO code such as
-    /// "zh" or "en", or nil to let the model detect it.
-    func transcribe(samples: [Float], language: String?) throws -> String {
+    /// "zh" or "en", or nil to let the model detect it. `vocabulary` lists names
+    /// and terms the speaker uses; Qwen3-ASR reads them as context, Whisper ignores them.
+    func transcribe(samples: [Float], language: String?, vocabulary: [String] = []) throws -> String {
         guard model != nil else { throw LingoError.noModelLoaded }
-        return run(samples: samples, language: language)
+        return run(samples: samples, language: language, vocabulary: vocabulary)
     }
 
-    private func run(samples: [Float], language: String?) -> String {
+    private func run(samples: [Float], language: String?, vocabulary: [String] = []) -> String {
         guard let model else { return "" }
         let audio = MLXArray(samples)
-        let parameters = STTGenerateParameters(
-            maxTokens: 2048,
-            temperature: 0.0,
-            topP: 0.95,
-            topK: 0,
-            verbose: false,
-            language: language
-        )
-        let output = model.generate(audio: audio, generationParameters: parameters)
+        let output: STTOutput
+        if let qwen = model as? Qwen3ASRModel {
+            output = qwen.generate(
+                audio: audio,
+                maxTokens: 2048,
+                temperature: 0.0,
+                context: Vocabulary.context(for: vocabulary),
+                language: language
+            )
+        } else {
+            let parameters = STTGenerateParameters(
+                maxTokens: 2048,
+                temperature: 0.0,
+                topP: 0.95,
+                topK: 0,
+                verbose: false,
+                language: language
+            )
+            output = model.generate(audio: audio, generationParameters: parameters)
+        }
         MLX.GPU.clearCache()
         return TextCleanup.clean(output.text)
+    }
+}
+
+/// The user's list of names and terms ("hotwords").
+enum Vocabulary {
+    /// Splits text typed by the user into terms: one per line, or separated by commas.
+    static func parse(_ text: String) -> [String] {
+        text.components(separatedBy: CharacterSet(charactersIn: "\n,，、;；"))
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+    }
+
+    /// The context passed to Qwen3-ASR, which biases recognition toward these spellings.
+    static func context(for terms: [String]) -> String {
+        terms.joined(separator: ", ")
     }
 }
 

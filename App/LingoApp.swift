@@ -1,5 +1,6 @@
 import AppKit
 import MLXAudioCore
+import CoreAudio
 import SwiftUI
 
 @main
@@ -76,27 +77,36 @@ enum SelfTest {
 
     /// Records the microphone for a few seconds, transcribes it with the default
     /// model and writes one JSON line to `out-file`. Used to check echo cancellation:
-    ///   open -n -W Lingo.app --args --self-test record <seconds> <on|off> <out-file>
+    ///   open -n -W Lingo.app --args --self-test record <seconds> <on|off> <out-file> [prewarm]
     /// (launch through `open` so macOS applies Lingo's own microphone permission).
     static func recordTest(arguments: [String]) {
-        guard arguments.count == 3, let seconds = Double(arguments[0]) else {
-            print("usage: Lingo --self-test record <seconds> <on|off> <out-file>")
+        guard arguments.count >= 3, let seconds = Double(arguments[0]) else {
+            print("usage: Lingo --self-test record <seconds> <on|off> <out-file> [prewarm]")
             exit(2)
         }
         let echoCancellation = arguments[1] == "on"
         let outURL = URL(fileURLWithPath: arguments[2])
+        let prewarm = arguments.count > 3 && arguments[3] == "prewarm"
         Task.detached {
             var result: [String: Any] = ["echo_cancellation_requested": echoCancellation]
             do {
                 let engine = TranscriptionEngine()
                 try await engine.load(ModelCatalog.defaultModel)
                 let recorder = AudioRecorder()
+                if prewarm {
+                    recorder.prewarm(echoCancellation: echoCancellation)
+                    try await Task.sleep(nanoseconds: 2_000_000_000)
+                    result["mic_running_while_prewarmed"] = AudioDeviceProbe.defaultInputIsRunning()
+                }
                 try recorder.start(echoCancellation: echoCancellation)
                 try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
                 let samples = recorder.stop()
                 let rms = (samples.reduce(0) { $0 + $1 * $1 } / Float(max(samples.count, 1))).squareRoot()
                 result["echo_cancellation_active"] = recorder.echoCancellationActive
                 result["startup_ms"] = Int((recorder.startupLatency ?? -1) * 1000)
+                result["voice_processing_setup_ms"] = Int(recorder.voiceProcessingSetup * 1000)
+                result["engine_start_ms"] = Int(recorder.engineStartDuration * 1000)
+                result["prewarmed"] = recorder.usedPrewarmedEngine
                 result["seconds"] = Double(samples.count) / Double(TranscriptionEngine.sampleRate)
                 result["rms"] = rms
                 result["text"] = try await engine.transcribe(samples: samples, language: "zh")
@@ -206,5 +216,24 @@ struct MenuContent: View {
 
         Divider()
         Button("Manage Models…") { SettingsWindowController.shared.show(tab: .models) }
+    }
+}
+
+/// Self-test helper: whether any process is capturing from the default input device
+/// (the condition that turns on the orange microphone indicator).
+enum AudioDeviceProbe {
+    static func defaultInputIsRunning() -> Bool {
+        var device = AudioDeviceID(0)
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultInputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain)
+        AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &device)
+        var running: UInt32 = 0
+        size = UInt32(MemoryLayout<UInt32>.size)
+        address.mSelector = kAudioDevicePropertyDeviceIsRunningSomewhere
+        AudioObjectGetPropertyData(device, &address, 0, nil, &size, &running)
+        return running != 0
     }
 }

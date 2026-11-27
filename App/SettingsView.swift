@@ -112,25 +112,40 @@ private struct GeneralSettings: View {
                     .foregroundStyle(.secondary)
             }
 
+            Section {
+                TextEditor(text: $state.vocabularyText)
+                    .font(.body)
+                    .frame(height: 72)
+                    .scrollContentBackground(.hidden)
+                    .overlay(alignment: .topLeading) {
+                        if state.vocabularyText.isEmpty {
+                            Text("梓萱, Supabase, Kubernetes")
+                                .foregroundStyle(.tertiary)
+                                .padding(.leading, 5)
+                                .allowsHitTesting(false)
+                        }
+                    }
+            } header: {
+                Text("Vocabulary")
+            } footer: {
+                Text(state.selectedModel.family == .whisper
+                     ? "Whisper doesn't use this list. Switch to a Qwen3-ASR model to use it."
+                     : "Names and terms you say often, separated by commas or new lines. Lingo spells them exactly as written here, including words that sound the same.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             Section("Behavior") {
                 Toggle("Restore the clipboard after pasting", isOn: $state.restoreClipboard)
                 HStack {
-                    Picker("Sounds", selection: $state.soundStyle) {
-                        ForEach(SoundStyle.allCases) { style in
-                            Text(style.displayName).tag(style)
-                        }
-                    }
-                    .onChange(of: state.soundStyle) { _, style in
-                        state.sounds.preview(style)
-                    }
+                    Toggle("Play start and stop sounds", isOn: $state.playSounds)
                     Button {
-                        state.sounds.preview(state.soundStyle)
+                        state.sounds.preview()
                     } label: {
                         Image(systemName: "play.circle")
                     }
                     .buttonStyle(.borderless)
                     .help("Play the start and stop sounds")
-                    .disabled(state.soundStyle == .off)
                 }
                 Toggle(isOn: $state.echoCancellation) {
                     Text("Ignore sound playing from this Mac")

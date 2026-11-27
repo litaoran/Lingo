@@ -10,7 +10,7 @@ let usage = """
       lingo-cli list
       lingo-cli download <model-id>
       lingo-cli delete <model-id>
-      lingo-cli transcribe [--model <id>] [--language zh|en|auto] <audio-file>...
+      lingo-cli transcribe [--model <id>] [--language zh|en|auto] [--vocabulary "a, b"] <audio-file>...
       lingo-cli bench [--model <id>] [--language zh|en|auto] --manifest <in.jsonl> --out <out.jsonl>
 
     bench reads JSON lines with "id" and "wav" (path to an audio file) and writes
@@ -29,6 +29,7 @@ func log(_ message: String) {
 struct Options {
     var model = ModelCatalog.defaultModel
     var language = TranscriptionLanguage.chinese
+    var vocabulary: [String] = []
     var manifest: String?
     var out: String?
     var positional: [String] = []
@@ -49,6 +50,9 @@ func parse(_ args: ArraySlice<String>) -> Options {
                 fail("--language must be zh, en or auto")
             }
             options.language = language
+        case "--vocabulary":
+            guard let raw = it.next() else { fail("--vocabulary needs a value") }
+            options.vocabulary = Vocabulary.parse(raw)
         case "--manifest":
             options.manifest = it.next()
         case "--out":
@@ -120,7 +124,7 @@ do {
         for path in options.positional {
             let samples = try loadSamples(path)
             let start = Date()
-            let text = try await engine.transcribe(samples: samples, language: options.language.modelCode)
+            let text = try await engine.transcribe(samples: samples, language: options.language.modelCode, vocabulary: options.vocabulary)
             let elapsed = Date().timeIntervalSince(start)
             log(String(format: "%@ (%.1fs audio, %.2fs)", path, Double(samples.count) / 16_000, elapsed))
             print(text)
@@ -139,7 +143,7 @@ do {
                   let wav = row["wav"] as? String else { continue }
             let samples = try loadSamples(wav)
             let start = Date()
-            let text = try await engine.transcribe(samples: samples, language: options.language.modelCode)
+            let text = try await engine.transcribe(samples: samples, language: options.language.modelCode, vocabulary: options.vocabulary)
             row["hyp"] = text
             row["seconds"] = Date().timeIntervalSince(start)
             row["model"] = options.model.id

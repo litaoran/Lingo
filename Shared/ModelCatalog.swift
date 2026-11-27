@@ -41,28 +41,12 @@ enum ModelCatalog {
             summary: "Default. Best for mixed Chinese and English."
         ),
         ASRModel(
-            id: "qwen3-asr-1.7b-bf16",
-            displayName: "Qwen3-ASR 1.7B (bf16)",
-            repo: "mlx-community/Qwen3-ASR-1.7B-bf16",
-            family: .qwen3ASR,
-            downloadBytes: 4_080_707_826,
-            summary: "Full precision. Largest download and memory use."
-        ),
-        ASRModel(
-            id: "qwen3-asr-1.7b-4bit",
-            displayName: "Qwen3-ASR 1.7B (4-bit)",
-            repo: "mlx-community/Qwen3-ASR-1.7B-4bit",
-            family: .qwen3ASR,
-            downloadBytes: 1_607_630_579,
-            summary: "Smaller and faster, slightly less accurate."
-        ),
-        ASRModel(
             id: "qwen3-asr-0.6b-8bit",
             displayName: "Qwen3-ASR 0.6B (8-bit)",
             repo: "mlx-community/Qwen3-ASR-0.6B-8bit",
             family: .qwen3ASR,
             downloadBytes: 1_010_771_234,
-            summary: "Smallest and fastest Qwen3-ASR."
+            summary: "Smaller and faster. For Macs with 8 GB of memory."
         ),
         ASRModel(
             id: "whisper-large-v3-turbo",
@@ -70,7 +54,7 @@ enum ModelCatalog {
             repo: "openai/whisper-large-v3-turbo",
             family: .whisper,
             downloadBytes: 1_622_443_339,
-            summary: "OpenAI Whisper. Strong for English and many other languages."
+            summary: "For speech that is mostly English or another language."
         ),
     ]
 

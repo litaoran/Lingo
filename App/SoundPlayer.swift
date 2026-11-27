@@ -1,58 +1,26 @@
 import AppKit
 
-/// The cue sounds played when recording starts and stops.
-enum SoundStyle: String, CaseIterable, Identifiable {
-    case soft
-    case bubble
-    case chime
-    case system
-    case off
-
-    var id: String { rawValue }
-
-    var displayName: String {
-        switch self {
-        case .soft: return "Soft"
-        case .bubble: return "Bubble"
-        case .chime: return "Chime"
-        case .system: return "Classic (system)"
-        case .off: return "Off"
-        }
-    }
-}
-
 /// Plays Lingo's start and stop cues. Sounds are loaded once and reused.
 @MainActor
 final class SoundPlayer {
+    /// The bundled cue set: `start-<name>.wav` and `stop-<name>.wav`.
+    private static let cueSet = "soft"
     private var cache: [String: NSSound] = [:]
 
-    func playStart(_ style: SoundStyle) {
-        play(style, cue: "start", systemName: "Tink")
-    }
+    func playStart() { play("start") }
 
-    func playStop(_ style: SoundStyle) {
-        play(style, cue: "stop", systemName: "Pop")
-    }
+    func playStop() { play("stop") }
 
-    /// Plays the start cue, then the stop cue, so a style can be auditioned.
-    func preview(_ style: SoundStyle) {
-        playStart(style)
+    /// Plays the start cue, then the stop cue.
+    func preview() {
+        playStart()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
-            self?.playStop(style)
+            self?.playStop()
         }
     }
 
-    private func play(_ style: SoundStyle, cue: String, systemName: String) {
-        let sound: NSSound?
-        switch style {
-        case .off:
-            return
-        case .system:
-            sound = NSSound(named: systemName)
-        default:
-            sound = bundled("\(cue)-\(style.rawValue)")
-        }
-        guard let sound else { return }
+    private func play(_ cue: String) {
+        guard let sound = bundled("\(cue)-\(Self.cueSet)") else { return }
         sound.stop()
         sound.play()
     }

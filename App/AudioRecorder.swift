@@ -1,11 +1,25 @@
 import AVFoundation
+import CoreAudio
 import Foundation
 
 /// Records from the default input device and converts to 16 kHz mono Float32,
 /// the format every supported model expects.
+///
+/// Turning on Apple's voice processing (echo cancellation) takes a few hundred
+/// milliseconds, so the recorder can `prewarm()` an engine while idle: the engine
+/// is configured and prepared, but not started, so the microphone stays off until
+/// `start()`.
 final class AudioRecorder {
-    private var engine: AVAudioEngine?
-    private var converter: AVAudioConverter?
+    private struct PreparedEngine {
+        let engine: AVAudioEngine
+        let converter: AVAudioConverter
+        let inputFormat: AVAudioFormat
+        let echoCancellationRequested: Bool
+        let echoCancellationActive: Bool
+        let deviceID: AudioDeviceID
+        let setupDuration: TimeInterval
+    }
+
     private let targetFormat = AVAudioFormat(
         commonFormat: .pcmFormatFloat32,
         sampleRate: Double(TranscriptionEngine.sampleRate),
@@ -13,31 +27,101 @@ final class AudioRecorder {
         interleaved: false
     )!
 
+    /// All engine work happens on this queue, so a prewarm in progress and a
+    /// start never touch an engine at the same time.
+    private let queue = DispatchQueue(label: "io.github.litaoran.Lingo.AudioRecorder", qos: .userInteractive)
+    private var prepared: PreparedEngine?
+    private var running: PreparedEngine?
+
     private let lock = NSLock()
     private var samples: [Float] = []
+    private var converter: AVAudioConverter?
 
     /// Called on the audio thread with the RMS level of each buffer.
     var onLevel: ((Float) -> Void)?
-
-    var isRecording: Bool { engine != nil }
 
     /// Whether the current or last recording used Apple's voice processing.
     private(set) var echoCancellationActive = false
     /// Seconds from `start()` until the first audio buffer arrived.
     private(set) var startupLatency: TimeInterval?
+    /// Seconds the last `start()` spent configuring an engine (0 when prewarmed).
+    private(set) var voiceProcessingSetup: TimeInterval = 0
+    /// Seconds the last `start()` spent in `AVAudioEngine.start()`.
+    private(set) var engineStartDuration: TimeInterval = 0
+    /// Whether the last `start()` used a prewarmed engine.
+    private(set) var usedPrewarmedEngine = false
     private var startedAt = Date()
+
+    /// Prepares an engine in the background so the next `start()` is fast.
+    /// The microphone stays off.
+    func prewarm(echoCancellation: Bool) {
+        queue.async { [self] in
+            guard running == nil else { return }
+            let device = Self.defaultInputDevice()
+            if let prepared, prepared.echoCancellationRequested == echoCancellation, prepared.deviceID == device {
+                return
+            }
+            prepared = try? makeEngine(echoCancellation: echoCancellation, device: device)
+        }
+    }
 
     /// Starts recording. With `echoCancellation`, Apple's voice processing removes
     /// sound the Mac itself is playing (videos, music, calls) from the microphone
     /// signal, so only your voice is transcribed. Falls back to the raw microphone
     /// if voice processing isn't available.
     func start(echoCancellation: Bool) throws {
-        guard engine == nil else { return }
+        try queue.sync {
+            guard running == nil else { return }
+            startedAt = Date()
+            startupLatency = nil
 
-        // A fresh engine per recording picks up the current default input device.
+            let device = Self.defaultInputDevice()
+            let ready = prepared
+            prepared = nil
+            if let ready, ready.echoCancellationRequested == echoCancellation, ready.deviceID == device {
+                do {
+                    usedPrewarmedEngine = true
+                    voiceProcessingSetup = 0
+                    try run(ready)
+                    return
+                } catch {
+                    // The device may have changed since the engine was prepared; build a fresh one.
+                }
+            }
+            let fresh = try makeEngine(echoCancellation: echoCancellation, device: device)
+            usedPrewarmedEngine = false
+            voiceProcessingSetup = fresh.setupDuration
+            try run(fresh)
+        }
+    }
+
+    /// Stops recording and returns everything captured since `start()`.
+    func stop() -> [Float] {
+        queue.sync {
+            if let running {
+                running.engine.inputNode.removeTap(onBus: 0)
+                running.engine.stop()
+            }
+            running = nil
+            lock.lock()
+            converter = nil
+            lock.unlock()
+        }
+        lock.lock()
+        defer { lock.unlock() }
+        let captured = samples
+        samples = []
+        return captured
+    }
+
+    // MARK: Engine setup (on `queue`)
+
+    private func makeEngine(echoCancellation: Bool, device: AudioDeviceID) throws -> PreparedEngine {
+        let began = Date()
+        // A fresh engine picks up the current default input device.
         let engine = AVAudioEngine()
         let input = engine.inputNode
-        echoCancellationActive = false
+        var echoActive = false
         if echoCancellation {
             do {
                 try input.setVoiceProcessingEnabled(true)
@@ -45,9 +129,9 @@ final class AudioRecorder {
                 input.voiceProcessingOtherAudioDuckingConfiguration =
                     AVAudioVoiceProcessingOtherAudioDuckingConfiguration(
                         enableAdvancedDucking: false, duckingLevel: .min)
-                echoCancellationActive = true
+                echoActive = true
             } catch {
-                echoCancellationActive = false
+                echoActive = false
             }
         }
 
@@ -62,45 +146,55 @@ final class AudioRecorder {
             // Voice processing and multi-channel interfaces put the voice on channel 0.
             converter.channelMap = [0]
         }
+        engine.prepare()
+        return PreparedEngine(
+            engine: engine, converter: converter, inputFormat: inputFormat,
+            echoCancellationRequested: echoCancellation, echoCancellationActive: echoActive,
+            deviceID: device, setupDuration: Date().timeIntervalSince(began))
+    }
 
+    private func run(_ candidate: PreparedEngine) throws {
         lock.lock()
         samples.removeAll(keepingCapacity: true)
+        converter = candidate.converter
         lock.unlock()
 
-        self.converter = converter
-        startupLatency = nil
-        startedAt = Date()
-        input.installTap(onBus: 0, bufferSize: 2048, format: inputFormat) { [weak self] buffer, _ in
+        let input = candidate.engine.inputNode
+        input.installTap(onBus: 0, bufferSize: 1024, format: candidate.inputFormat) { [weak self] buffer, _ in
             self?.process(buffer)
         }
-        engine.prepare()
+        let began = Date()
         do {
-            try engine.start()
+            try candidate.engine.start()
         } catch {
             input.removeTap(onBus: 0)
-            self.converter = nil
+            lock.lock()
+            converter = nil
+            lock.unlock()
             throw LingoError.microphoneUnavailable(error.localizedDescription)
         }
-        self.engine = engine
+        engineStartDuration = Date().timeIntervalSince(began)
+        echoCancellationActive = candidate.echoCancellationActive
+        running = candidate
     }
 
-    /// Stops recording and returns everything captured since `start()`.
-    func stop() -> [Float] {
-        if let engine {
-            engine.inputNode.removeTap(onBus: 0)
-            engine.stop()
-        }
-        engine = nil
-        converter = nil
-
-        lock.lock()
-        defer { lock.unlock() }
-        let captured = samples
-        samples = []
-        return captured
+    private static func defaultInputDevice() -> AudioDeviceID {
+        var device = AudioDeviceID(0)
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultInputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain)
+        AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &device)
+        return device
     }
+
+    // MARK: Audio thread
 
     private func process(_ buffer: AVAudioPCMBuffer) {
+        lock.lock()
+        let converter = self.converter
+        lock.unlock()
         guard let converter else { return }
         if startupLatency == nil { startupLatency = Date().timeIntervalSince(startedAt) }
         let ratio = targetFormat.sampleRate / buffer.format.sampleRate

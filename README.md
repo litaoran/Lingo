@@ -1,140 +1,102 @@
 # Lingo
 
-**Private, on-device dictation for macOS that handles mixed Chinese and English.**
+**English** · [简体中文](README.zh-CN.md)
 
-Hold a shortcut, speak, let go: Lingo transcribes on your Mac and pastes the text wherever your cursor is. Say "我们下周把这个 feature ship 出去" and you get exactly that, with Chinese kept as Chinese and English kept as English.
+**Hold a key. Speak Chinese, English, or both. Get what you said, where your cursor is.**
 
-> 中文简介：Lingo 是一个开源的 macOS 口述输入工具，主打中英混说。按住快捷键说话，松开后在本机转写，并把文字粘贴到当前光标所在的 App。默认使用 Qwen3-ASR-1.7B（MLX），全部在本机运行，不上传任何音频或文字，也不收集任何统计数据。仅支持 Apple Silicon。
+Lingo is a dictation app for the Mac that does one thing: it turns mixed Chinese–English speech into text, on your Mac, and pastes it into whatever app you're typing in. Say "我们下周把这个 feature ship 出去" and you get exactly that: Chinese stays Chinese, English stays English.
 
-## Features
+Free and open source (MIT). Apple Silicon only.
 
-- **One shortcut, two ways to talk.** Hold <kbd>⌥ Space</kbd>, speak, and release to paste. For longer dictation, tap it once to keep recording and tap again to finish. <kbd>Esc</kbd> cancels. The shortcut can be changed in Settings.
-- **Pastes into any app.** The transcript goes to the app you're typing in. Your clipboard is put back afterwards.
-- **Built for code-switching.** The default model, Qwen3-ASR-1.7B, keeps English words in English inside Chinese sentences.
-- **Ignores your speakers.** Echo cancellation keeps videos, music or calls playing on your Mac out of the transcript.
-- **Fully local.** Audio is recorded only while you dictate, transcribed on your Mac, and then discarded. No audio or text is uploaded and there is no analytics. The only network requests are model downloads from huggingface.co.
-- **Switchable models.** Pick, download and delete models from the menu bar. Each model's size is shown before you download it.
-- **Language setting.** Defaults to 中文 (Chinese), which handles mixed Chinese–English speech. English and Auto-detect are also available.
+## What it does
 
-## Requirements
+- **One shortcut.** Hold <kbd>⌥ Space</kbd>, speak, and let go to paste. For longer dictation, tap once to keep recording and tap again to finish. <kbd>Esc</kbd> cancels.
+- **Gets mixed speech right.** The default model, Qwen3-ASR 1.7B, keeps English words in English inside Chinese sentences.
+- **Spells your names and terms.** Add the names, products and jargon you use to the vocabulary list, and Lingo writes them the way you do.
+- **Stays out of the way.** It ignores sound coming from your speakers, puts your clipboard back after pasting, and drops recordings that were only "嗯".
+- **Never goes online.** Speech is transcribed on your Mac. Nothing is uploaded, and there are no accounts or analytics.
 
-- A Mac with Apple Silicon (M1 or later). Intel Macs are not supported.
-- macOS 14 Sonoma or later.
-- About 2.5 GB of free disk space for the default model, and 8 GB of RAM or more.
+## What it doesn't do
+
+Lingo stays small on purpose. It won't:
+
+- rewrite, summarize or translate what you said
+- use cloud models, accounts or subscriptions
+- keep a history of what you dictated
+- transcribe audio files or meetings
+
+If you want those, [Hex](https://github.com/anomalyco/hex), [VoxtMini](https://github.com/hehehai/VoxtMini) and [VoiceInk](https://github.com/Beingpax/VoiceInk) are good open-source choices.
 
 ## Install
 
+Requires a Mac with Apple Silicon (M1 or later) and macOS 14 Sonoma or later.
+
 1. Download `Lingo-<version>-arm64.dmg` from the [latest release](https://github.com/litaoran/Lingo/releases/latest).
-2. Open the DMG and drag **Lingo** to **Applications**.
-3. Open Lingo from Applications.
+2. Open it and drag **Lingo** to **Applications**.
+3. Open Lingo. It lives in the menu bar (microphone icon).
 
-Releases are signed with an Apple Developer ID and notarized by Apple, so macOS opens them without warnings.
+Releases are signed and notarized by Apple, so macOS opens them without warnings.
 
-### First launch
+On first launch, Lingo walks you through three steps:
 
-Lingo lives in the menu bar (microphone icon). On first launch it opens Settings with a short checklist:
+1. **Download the model** (2.47 GB, once).
+2. **Allow microphone access**, so Lingo can hear you while you hold the shortcut.
+3. **Allow Accessibility access**, so Lingo can paste for you. Without it, the text is copied and you paste it yourself.
 
-1. **Download a model.** The default, Qwen3-ASR 1.7B (8-bit), is 2.47 GB.
-2. **Allow microphone access.**
-3. **Allow Accessibility access** so Lingo can paste for you.
+Lingo doesn't need Screen Recording, Input Monitoring or Full Disk Access.
 
-Then hold <kbd>⌥ Space</kbd> anywhere, speak, and release. To dictate something long without holding the key, tap <kbd>⌥ Space</kbd>, speak, and tap it again.
+## Settings
 
-## Permissions
+Everything lives in **Settings** (menu bar icon → Settings…):
 
-| Permission | Why Lingo needs it | Without it |
-|---|---|---|
-| **Microphone** | To record while you hold or toggle the shortcut. Nothing is recorded at any other time. | Lingo can't dictate. |
-| **Accessibility** | To press ⌘V in the app you're typing in. | The transcript is copied to the clipboard, and you paste it yourself. |
-
-Lingo does not need Screen Recording, Input Monitoring or Full Disk Access.
-
-**Updating:** permissions carry over to new versions. Two exceptions need a one-time fix: upgrading from 0.1.0 (which wasn't signed with a Developer ID), and builds you compile yourself. If Lingo says Accessibility is off while System Settings shows it on, open **System Settings → Privacy & Security → Accessibility**, remove Lingo with **−**, then click **Open Settings** in Lingo and switch it on again.
+- **Shortcut:** change <kbd>⌥ Space</kbd> to any key combination.
+- **Language:** 中文 (default) handles Chinese and mixed Chinese–English. Choose English if you only speak English.
+- **Vocabulary:** names and terms you say often, separated by commas or new lines, for example `梓萱, Supabase, Kubernetes`. Words that sound the same are written your way too.
+- **Model:** see below.
 
 ## Models
 
-Models are downloaded on demand from Hugging Face and stored in `~/Library/Application Support/Lingo/Models`. Switch, download or delete them from the menu bar (**Model ▸**) or from **Settings → Models**.
+Models are downloaded from Hugging Face when you choose them and stored in `~/Library/Application Support/Lingo/Models`.
 
-| Model | Download size | Notes |
+| Model | Download | Best for |
 |---|---|---|
-| **Qwen3-ASR 1.7B, 8-bit** (default) | 2.47 GB | Best for mixed Chinese and English |
-| Qwen3-ASR 1.7B, bf16 | 4.08 GB | Full precision; largest download and memory use |
-| Qwen3-ASR 1.7B, 4-bit | 1.61 GB | Smaller and faster |
-| Qwen3-ASR 0.6B, 8-bit | 1.01 GB | Smallest and fastest Qwen3-ASR |
-| Whisper large-v3-turbo | 1.62 GB | Strong for English and many other languages |
+| **Qwen3-ASR 1.7B** (default) | 2.47 GB | Chinese and mixed Chinese–English |
+| Qwen3-ASR 0.6B | 1.01 GB | Macs with 8 GB of memory |
+| Whisper large-v3-turbo | 1.62 GB | Speech that is mostly English or another language |
 
-Sizes are the files Lingo downloads. Qwen3-ASR weights come from [mlx-community](https://huggingface.co/mlx-community) and Whisper from [openai/whisper-large-v3-turbo](https://huggingface.co/openai/whisper-large-v3-turbo).
+With Whisper, set Language to Auto-detect: forcing 中文 makes Whisper translate English into Chinese. Whisper doesn't use the vocabulary list.
 
-### Language setting
+### Accuracy
 
-- **中文 (default):** for Chinese and mixed Chinese–English speech. English words and sentences stay in English.
-- **English:** for English-only speech.
-- **Auto-detect:** lets the model choose. With Qwen3-ASR, auto-detect may turn Chinese parts of mixed speech into English, which is why it isn't the default.
+On bilingual Chinese–English speech, Qwen3-ASR 1.7B was the most accurate open model tested. Scores are mixed error rate (MER); lower is better.
 
-With Whisper, use **Auto-detect**: forcing 中文 makes Whisper translate English speech into Chinese.
-
-## Benchmark
-
-Why Qwen3-ASR-1.7B is the default: on bilingual Chinese–English recordings it was the most accurate open model tested. Scores are mixed error rate (MER); lower is better.
-
-| Test set | Qwen3-ASR-1.7B | Whisper large-v3 |
+| Test set | Qwen3-ASR 1.7B | Whisper large-v3 |
 |---|---|---|
 | Personal bilingual recordings | **3.5%** | 7.0% |
 | [ASCEND](https://huggingface.co/datasets/CAiRE/ASCEND) (Chinese–English code-switching) | **23–34%** | 35–44% |
 
-## Build from source
-
-Requirements: Xcode 26 or later, plus the Metal Toolchain component that MLX needs to compile its GPU kernels:
-
-```bash
-xcodebuild -downloadComponent MetalToolchain
-```
-
-Then open `Lingo.xcodeproj` and run the **Lingo** scheme, or build a DMG:
-
-```bash
-scripts/build-release.sh
-```
-
-Local builds are ad-hoc signed. To produce a signed and notarized release, pass your Developer ID and a notarytool keychain profile:
-
-```bash
-SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" NOTARY_PROFILE=lingo-notary scripts/build-release.sh
-```
-
-MLX's Metal shaders can only be compiled by Xcode or `xcodebuild`; `swift build` doesn't work.
-
-The Xcode project is generated from `project.yml` with [XcodeGen](https://github.com/yonaskolb/XcodeGen). After editing `project.yml`, run `xcodegen generate`.
-
-`mlx-audio-swift` is pinned to 0.1.4, the last release that builds with Swift 6.2 (Xcode 26.0–26.3). Newer releases need Swift 6.3.
-
-### Command-line tool
-
-The `lingo-cli` scheme builds a small tool that uses the same models and code as the app. It's handy for trying models or scoring them on your own test set:
-
-```bash
-lingo-cli list
-lingo-cli download qwen3-asr-0.6b-8bit
-lingo-cli transcribe --model qwen3-asr-1.7b-8bit --language zh recording.wav
-lingo-cli bench --model qwen3-asr-1.7b-8bit --language zh --manifest clips.jsonl --out results.jsonl
-```
-
-Run it from the build products folder: it needs `mlx-swift_Cmlx.bundle` next to the binary.
-
 ## Privacy
 
-- Audio stays in memory only while you dictate and is discarded after transcription. It's never written to disk.
-- Transcripts are pasted, then forgotten. Lingo keeps only the most recent one in memory for **Copy Last Transcript**.
-- No analytics, crash reporting or update checks. The only network traffic is model downloads from huggingface.co, which you start.
-- Logs (viewable in Console.app under `io.github.litaoran.Lingo`) record timings and character counts, never transcript text.
+- The microphone is on only while you dictate. Audio stays in memory and is discarded after transcription; it's never written to disk.
+- Transcripts are pasted, then forgotten. Only the most recent one is kept in memory, for **Copy Last Transcript**.
+- No analytics, crash reports or update checks. The only network requests are model downloads from huggingface.co, which you start.
+- Logs (Console.app, `io.github.litaoran.Lingo`) record timings and lengths, never what you said.
+
+## Updating
+
+Download the new DMG and replace Lingo in Applications. Settings, models and permissions carry over. If you're coming from 0.1.0 and Lingo says Accessibility is off while System Settings shows it on, remove Lingo from **System Settings → Privacy & Security → Accessibility** with **−**, then turn it on again from Lingo.
+
+## Building from source
+
+See [BUILDING.md](BUILDING.md).
 
 ## Acknowledgements
 
-Lingo is built on [MLX](https://github.com/ml-explore/mlx-swift), [mlx-audio-swift](https://github.com/Blaizzy/mlx-audio-swift) and [KeyboardShortcuts](https://github.com/sindresorhus/KeyboardShortcuts). It uses the [Qwen3-ASR](https://github.com/QwenLM/Qwen3-ASR) models (Apache-2.0) and [Whisper](https://github.com/openai/whisper) (MIT).
+Lingo is built on [MLX](https://github.com/ml-explore/mlx-swift), [mlx-audio-swift](https://github.com/Blaizzy/mlx-audio-swift) and [KeyboardShortcuts](https://github.com/sindresorhus/KeyboardShortcuts), and uses the [Qwen3-ASR](https://github.com/QwenLM/Qwen3-ASR) (Apache-2.0) and [Whisper](https://github.com/openai/whisper) (MIT) models.
 
-Thanks to the open-source dictation apps that explored this space first, including friday, MixDictate, qwen-dictation and [Hex](https://github.com/kitlangton/Hex).
+Thanks to the open-source dictation apps that explored this space first, including [Hex](https://github.com/anomalyco/hex), [Handy](https://github.com/cjpais/Handy), [VoiceInk](https://github.com/Beingpax/VoiceInk), [Qwen Scribe](https://github.com/VladUZH/qwen-scribe) and [VoxtMini](https://github.com/hehehai/VoxtMini).
 
-See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for dependency licenses.
+Dependency licenses are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## License
 

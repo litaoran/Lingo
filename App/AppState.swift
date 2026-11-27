@@ -62,11 +62,18 @@ final class AppState: ObservableObject {
     @Published var restoreClipboard: Bool {
         didSet { defaults.set(restoreClipboard, forKey: Keys.restoreClipboard) }
     }
-    @Published var soundStyle: SoundStyle {
-        didSet { defaults.set(soundStyle.rawValue, forKey: Keys.soundStyle) }
+    @Published var playSounds: Bool {
+        didSet { defaults.set(playSounds, forKey: Keys.playSounds) }
     }
     @Published var echoCancellation: Bool {
-        didSet { defaults.set(echoCancellation, forKey: Keys.echoCancellation) }
+        didSet {
+            defaults.set(echoCancellation, forKey: Keys.echoCancellation)
+            prewarmRecorder()
+        }
+    }
+    /// Names and terms the user says often, as typed in Settings.
+    @Published var vocabularyText: String {
+        didSet { defaults.set(vocabularyText, forKey: Keys.vocabulary) }
     }
     @Published var showIndicator: Bool {
         didSet { defaults.set(showIndicator, forKey: Keys.showIndicator) }
@@ -97,9 +104,10 @@ final class AppState: ObservableObject {
         static let model = "selectedModelID"
         static let language = "language"
         static let restoreClipboard = "restoreClipboard"
-        static let playSounds = "playSounds"  // pre-0.1.1 on/off setting
-        static let soundStyle = "soundStyle"
+        static let playSounds = "playSounds"
+        static let legacySoundStyle = "soundStyle"  // 0.1.1–0.1.2 picker; "off" meant no sounds
         static let showIndicator = "showIndicator"
+        static let vocabulary = "vocabulary"
         static let echoCancellation = "echoCancellation"
     }
 
@@ -115,14 +123,16 @@ final class AppState: ObservableObject {
         selectedModelID = ModelCatalog.model(id: storedModel) != nil ? storedModel : ModelCatalog.defaultModelID
         language = TranscriptionLanguage(rawValue: defaults.string(forKey: Keys.language) ?? "") ?? .chinese
         restoreClipboard = defaults.bool(forKey: Keys.restoreClipboard)
-        if let stored = defaults.string(forKey: Keys.soundStyle), let style = SoundStyle(rawValue: stored) {
-            soundStyle = style
-        } else if defaults.object(forKey: Keys.playSounds) as? Bool == false {
-            soundStyle = .off
+        if let legacy = defaults.string(forKey: Keys.legacySoundStyle) {
+            let enabled = legacy != "off"
+            defaults.removeObject(forKey: Keys.legacySoundStyle)
+            defaults.set(enabled, forKey: Keys.playSounds)
+            playSounds = enabled
         } else {
-            soundStyle = .soft
+            playSounds = defaults.object(forKey: Keys.playSounds) as? Bool ?? true
         }
         showIndicator = defaults.bool(forKey: Keys.showIndicator)
+        vocabularyText = defaults.string(forKey: Keys.vocabulary) ?? ""
         echoCancellation = defaults.bool(forKey: Keys.echoCancellation)
 
         recorder.onLevel = { [weak self] level in
@@ -144,6 +154,7 @@ final class AppState: ObservableObject {
         KeyboardShortcuts.onKeyDown(for: .cancelDictation) { [weak self] in self?.cancelRecording() }
         KeyboardShortcuts.disable(.cancelDictation)
 
+        prewarmRecorder()
         if models.isInstalled(selectedModel) {
             loadSelectedModel()
         } else {
@@ -252,6 +263,7 @@ final class AppState: ObservableObject {
         switch phase {
         case .idle:
             mode = .locked
+            keyDownAt = Date()
             startRecording()
         case .recording:
             stopRecordingAndTranscribe()
@@ -269,6 +281,7 @@ final class AppState: ObservableObject {
         _ = recorder.stop()
         audioLevel = 0
         phase = .idle
+        prewarmRecorder()
         log.info("Recording cancelled")
         hud.show(.message("Cancelled", isError: false), state: self)
         hud.hide(after: 1.0)
@@ -310,18 +323,21 @@ final class AppState: ObservableObject {
             return
         }
 
+        // Give feedback first: the sound and indicator shouldn't wait for the microphone.
+        if playSounds { sounds.playStart() }
+        if showIndicator { hud.show(.recording(locked: mode == .locked), state: self) }
         do {
             try recorder.start(echoCancellation: echoCancellation)
         } catch {
             fail(error.localizedDescription)
+            prewarmRecorder()
             return
         }
         phase = .recording
         recordingStartedAt = Date()
         KeyboardShortcuts.enable(.cancelDictation)
-        log.info("Recording started (\(self.mode == .locked ? "locked" : "pressed", privacy: .public), echo cancellation \(self.recorder.echoCancellationActive ? "on" : "off", privacy: .public))")
-        sounds.playStart(soundStyle)
-        if showIndicator { hud.show(.recording(locked: mode == .locked), state: self) }
+        let sinceKey = Date().timeIntervalSince(keyDownAt ?? Date()) * 1000
+        log.info("Recording started (\(self.mode == .locked ? "locked" : "pressed", privacy: .public), echo cancellation \(self.recorder.echoCancellationActive ? "on" : "off", privacy: .public), \(self.recorder.usedPrewarmedEngine ? "prewarmed" : "cold", privacy: .public), ready \(sinceKey, format: .fixed(precision: 0))ms after key)")
 
         maxDurationTimer?.invalidate()
         maxDurationTimer = Timer.scheduledTimer(withTimeInterval: maximumDuration, repeats: false) { [weak self] _ in
@@ -338,6 +354,7 @@ final class AppState: ObservableObject {
         maxDurationTimer = nil
         let samples = recorder.stop()
         audioLevel = 0
+        prewarmRecorder()
         let duration = Double(samples.count) / Double(TranscriptionEngine.sampleRate)
 
         guard duration >= minimumDuration, samples.contains(where: { abs($0) > 0.0005 }) else {
@@ -347,21 +364,28 @@ final class AppState: ObservableObject {
         }
 
         phase = .transcribing
-        sounds.playStop(soundStyle)
+        if playSounds { sounds.playStop() }
         if showIndicator { hud.show(.transcribing, state: self) }
 
         let languageCode = language.modelCode
-        log.info("Transcribing \(duration, format: .fixed(precision: 1))s of audio (mic startup \((self.recorder.startupLatency ?? -1) * 1000, format: .fixed(precision: 0))ms)")
+        let vocabulary = Vocabulary.parse(vocabularyText)
+        log.info("Transcribing \(duration, format: .fixed(precision: 1))s of audio with \(vocabulary.count) vocabulary terms (mic startup \((self.recorder.startupLatency ?? -1) * 1000, format: .fixed(precision: 0))ms)")
         Task {
             let start = Date()
             do {
-                let text = try await engine.transcribe(samples: samples, language: languageCode)
+                let text = try await engine.transcribe(samples: samples, language: languageCode, vocabulary: vocabulary)
                 log.info("Transcribed in \(Date().timeIntervalSince(start), format: .fixed(precision: 2))s, \(text.count) characters")
                 self.finish(with: text)
             } catch {
                 self.fail(error.localizedDescription)
             }
         }
+    }
+
+    /// Gets the next recording's audio engine ready while idle (the microphone stays off).
+    private func prewarmRecorder() {
+        guard Permissions.microphoneStatus == .authorized else { return }
+        recorder.prewarm(echoCancellation: echoCancellation)
     }
 
     private func finish(with text: String) {
