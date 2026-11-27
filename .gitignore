@@ -1,0 +1,24 @@
+# Build output
+build/
+DerivedData/
+*.xcresult
+dist/
+
+# Xcode user state
+xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+
+# macOS
+.DS_Store
+
+# Never commit audio, transcripts, benchmark outputs, or secrets
+*.wav
+*.m4a
+*.mp3
+*.flac
+*.jsonl
+.env
+*.p12
+*.cer
+*.mobileprovision
