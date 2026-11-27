@@ -22,3 +22,6 @@ xcuserdata/
 *.p12
 *.cer
 *.mobileprovision
+
+# Synthesized UI sounds are part of the app
+!App/Sounds/*.wav

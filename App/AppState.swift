@@ -58,8 +58,8 @@ final class AppState: ObservableObject {
     @Published var restoreClipboard: Bool {
         didSet { defaults.set(restoreClipboard, forKey: Keys.restoreClipboard) }
     }
-    @Published var playSounds: Bool {
-        didSet { defaults.set(playSounds, forKey: Keys.playSounds) }
+    @Published var soundStyle: SoundStyle {
+        didSet { defaults.set(soundStyle.rawValue, forKey: Keys.soundStyle) }
     }
     @Published var showIndicator: Bool {
         didSet { defaults.set(showIndicator, forKey: Keys.showIndicator) }
@@ -70,6 +70,7 @@ final class AppState: ObservableObject {
     private let engine = TranscriptionEngine()
     private let recorder = AudioRecorder()
     private let hud = HUDController()
+    let sounds = SoundPlayer()
     private let defaults = UserDefaults.standard
     private var mode: RecordingMode = .hold
     private var recordingStartedAt: Date?
@@ -86,7 +87,8 @@ final class AppState: ObservableObject {
         static let model = "selectedModelID"
         static let language = "language"
         static let restoreClipboard = "restoreClipboard"
-        static let playSounds = "playSounds"
+        static let playSounds = "playSounds"  // pre-0.1.1 on/off setting
+        static let soundStyle = "soundStyle"
         static let showIndicator = "showIndicator"
     }
 
@@ -95,14 +97,19 @@ final class AppState: ObservableObject {
             Keys.model: ModelCatalog.defaultModelID,
             Keys.language: TranscriptionLanguage.chinese.rawValue,
             Keys.restoreClipboard: true,
-            Keys.playSounds: true,
             Keys.showIndicator: true,
         ])
         let storedModel = defaults.string(forKey: Keys.model) ?? ModelCatalog.defaultModelID
         selectedModelID = ModelCatalog.model(id: storedModel) != nil ? storedModel : ModelCatalog.defaultModelID
         language = TranscriptionLanguage(rawValue: defaults.string(forKey: Keys.language) ?? "") ?? .chinese
         restoreClipboard = defaults.bool(forKey: Keys.restoreClipboard)
-        playSounds = defaults.bool(forKey: Keys.playSounds)
+        if let stored = defaults.string(forKey: Keys.soundStyle), let style = SoundStyle(rawValue: stored) {
+            soundStyle = style
+        } else if defaults.object(forKey: Keys.playSounds) as? Bool == false {
+            soundStyle = .off
+        } else {
+            soundStyle = .soft
+        }
         showIndicator = defaults.bool(forKey: Keys.showIndicator)
 
         recorder.onLevel = { [weak self] level in
@@ -271,7 +278,7 @@ final class AppState: ObservableObject {
         phase = .recording
         recordingStartedAt = Date()
         log.info("Recording started (\(self.mode == .hold ? "hold" : "toggle", privacy: .public))")
-        if playSounds { NSSound(named: "Tink")?.play() }
+        sounds.playStart(soundStyle)
         if showIndicator { hud.show(.recording, state: self) }
 
         maxDurationTimer?.invalidate()
@@ -297,7 +304,7 @@ final class AppState: ObservableObject {
         }
 
         phase = .transcribing
-        if playSounds { NSSound(named: "Pop")?.play() }
+        sounds.playStop(soundStyle)
         if showIndicator { hud.show(.transcribing, state: self) }
 
         let languageCode = language.modelCode

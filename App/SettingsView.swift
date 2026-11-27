@@ -111,7 +111,24 @@ private struct GeneralSettings: View {
 
             Section("Behavior") {
                 Toggle("Restore the clipboard after pasting", isOn: $state.restoreClipboard)
-                Toggle("Play sounds when recording starts and stops", isOn: $state.playSounds)
+                HStack {
+                    Picker("Sounds", selection: $state.soundStyle) {
+                        ForEach(SoundStyle.allCases) { style in
+                            Text(style.displayName).tag(style)
+                        }
+                    }
+                    .onChange(of: state.soundStyle) { _, style in
+                        state.sounds.preview(style)
+                    }
+                    Button {
+                        state.sounds.preview(state.soundStyle)
+                    } label: {
+                        Image(systemName: "play.circle")
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Play the start and stop sounds")
+                    .disabled(state.soundStyle == .off)
+                }
                 Toggle("Show recording indicator", isOn: $state.showIndicator)
                 Toggle("Launch at login", isOn: $launchAtLogin)
                     .onChange(of: launchAtLogin) { _, enabled in
