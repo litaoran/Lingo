@@ -61,6 +61,9 @@ final class AppState: ObservableObject {
     @Published var soundStyle: SoundStyle {
         didSet { defaults.set(soundStyle.rawValue, forKey: Keys.soundStyle) }
     }
+    @Published var echoCancellation: Bool {
+        didSet { defaults.set(echoCancellation, forKey: Keys.echoCancellation) }
+    }
     @Published var showIndicator: Bool {
         didSet { defaults.set(showIndicator, forKey: Keys.showIndicator) }
     }
@@ -90,6 +93,7 @@ final class AppState: ObservableObject {
         static let playSounds = "playSounds"  // pre-0.1.1 on/off setting
         static let soundStyle = "soundStyle"
         static let showIndicator = "showIndicator"
+        static let echoCancellation = "echoCancellation"
     }
 
     private init() {
@@ -98,6 +102,7 @@ final class AppState: ObservableObject {
             Keys.language: TranscriptionLanguage.chinese.rawValue,
             Keys.restoreClipboard: true,
             Keys.showIndicator: true,
+            Keys.echoCancellation: true,
         ])
         let storedModel = defaults.string(forKey: Keys.model) ?? ModelCatalog.defaultModelID
         selectedModelID = ModelCatalog.model(id: storedModel) != nil ? storedModel : ModelCatalog.defaultModelID
@@ -111,6 +116,7 @@ final class AppState: ObservableObject {
             soundStyle = .soft
         }
         showIndicator = defaults.bool(forKey: Keys.showIndicator)
+        echoCancellation = defaults.bool(forKey: Keys.echoCancellation)
 
         recorder.onLevel = { [weak self] level in
             DispatchQueue.main.async { self?.audioLevel = level }
@@ -270,14 +276,14 @@ final class AppState: ObservableObject {
         }
 
         do {
-            try recorder.start()
+            try recorder.start(echoCancellation: echoCancellation)
         } catch {
             fail(error.localizedDescription)
             return
         }
         phase = .recording
         recordingStartedAt = Date()
-        log.info("Recording started (\(self.mode == .hold ? "hold" : "toggle", privacy: .public))")
+        log.info("Recording started (\(self.mode == .hold ? "hold" : "toggle", privacy: .public), echo cancellation \(self.recorder.echoCancellationActive ? "on" : "off", privacy: .public))")
         sounds.playStart(soundStyle)
         if showIndicator { hud.show(.recording, state: self) }
 
@@ -308,7 +314,7 @@ final class AppState: ObservableObject {
         if showIndicator { hud.show(.transcribing, state: self) }
 
         let languageCode = language.modelCode
-        log.info("Transcribing \(duration, format: .fixed(precision: 1))s of audio")
+        log.info("Transcribing \(duration, format: .fixed(precision: 1))s of audio (mic startup \((self.recorder.startupLatency ?? -1) * 1000, format: .fixed(precision: 0))ms)")
         Task {
             let start = Date()
             do {

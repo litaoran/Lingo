@@ -129,6 +129,10 @@ private struct GeneralSettings: View {
                     .help("Play the start and stop sounds")
                     .disabled(state.soundStyle == .off)
                 }
+                Toggle(isOn: $state.echoCancellation) {
+                    Text("Ignore sound playing from this Mac")
+                    Text("Uses echo cancellation so videos, music or calls coming out of your speakers aren't transcribed. Turn off to record the raw microphone.")
+                }
                 Toggle("Show recording indicator", isOn: $state.showIndicator)
                 Toggle("Launch at login", isOn: $launchAtLogin)
                     .onChange(of: launchAtLogin) { _, enabled in

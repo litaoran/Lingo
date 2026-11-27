@@ -80,6 +80,22 @@ enum TextCleanup {
         if let range = text.range(of: "<asr_text>") {
             text = String(text[range.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
         }
+        // Near-silent recordings often come back as a lone filler such as "嗯。".
+        // Pasting that is never useful, so treat it as no speech.
+        if isOnlyFiller(text) { return "" }
         return text
+    }
+
+    private static let fillers: Set<String> = [
+        "嗯", "嗯嗯", "呃", "啊", "哦", "噢", "唔", "呣", "额",
+        "hmm", "hm", "mm", "mhm", "um", "uh", "er", "ah", "oh",
+    ]
+
+    static func isOnlyFiller(_ text: String) -> Bool {
+        let words = text.lowercased()
+            .components(separatedBy: CharacterSet.punctuationCharacters
+                .union(.whitespacesAndNewlines).union(.symbols))
+            .filter { !$0.isEmpty }
+        return !words.isEmpty && words.allSatisfy { fillers.contains($0) }
     }
 }

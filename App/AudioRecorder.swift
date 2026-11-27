@@ -21,12 +21,36 @@ final class AudioRecorder {
 
     var isRecording: Bool { engine != nil }
 
-    func start() throws {
+    /// Whether the current or last recording used Apple's voice processing.
+    private(set) var echoCancellationActive = false
+    /// Seconds from `start()` until the first audio buffer arrived.
+    private(set) var startupLatency: TimeInterval?
+    private var startedAt = Date()
+
+    /// Starts recording. With `echoCancellation`, Apple's voice processing removes
+    /// sound the Mac itself is playing (videos, music, calls) from the microphone
+    /// signal, so only your voice is transcribed. Falls back to the raw microphone
+    /// if voice processing isn't available.
+    func start(echoCancellation: Bool) throws {
         guard engine == nil else { return }
 
         // A fresh engine per recording picks up the current default input device.
         let engine = AVAudioEngine()
         let input = engine.inputNode
+        echoCancellationActive = false
+        if echoCancellation {
+            do {
+                try input.setVoiceProcessingEnabled(true)
+                // Keep other apps' audio at its normal volume while recording.
+                input.voiceProcessingOtherAudioDuckingConfiguration =
+                    AVAudioVoiceProcessingOtherAudioDuckingConfiguration(
+                        enableAdvancedDucking: false, duckingLevel: .min)
+                echoCancellationActive = true
+            } catch {
+                echoCancellationActive = false
+            }
+        }
+
         let inputFormat = input.outputFormat(forBus: 0)
         guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0 else {
             throw LingoError.microphoneUnavailable("no input device found")
@@ -34,12 +58,18 @@ final class AudioRecorder {
         guard let converter = AVAudioConverter(from: inputFormat, to: targetFormat) else {
             throw LingoError.microphoneUnavailable("unsupported input format \(inputFormat)")
         }
+        if inputFormat.channelCount > 1 {
+            // Voice processing and multi-channel interfaces put the voice on channel 0.
+            converter.channelMap = [0]
+        }
 
         lock.lock()
         samples.removeAll(keepingCapacity: true)
         lock.unlock()
 
         self.converter = converter
+        startupLatency = nil
+        startedAt = Date()
         input.installTap(onBus: 0, bufferSize: 2048, format: inputFormat) { [weak self] buffer, _ in
             self?.process(buffer)
         }
@@ -72,6 +102,7 @@ final class AudioRecorder {
 
     private func process(_ buffer: AVAudioPCMBuffer) {
         guard let converter else { return }
+        if startupLatency == nil { startupLatency = Date().timeIntervalSince(startedAt) }
         let ratio = targetFormat.sampleRate / buffer.format.sampleRate
         let capacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + 64
         guard let output = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: capacity) else { return }

@@ -37,6 +37,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 /// transcript, and exits.
 enum SelfTest {
     static func run(arguments: [String]) {
+        if arguments.first == "record" {
+            recordTest(arguments: Array(arguments.dropFirst()))
+            return
+        }
         guard let path = arguments.first else {
             print("usage: Lingo --self-test <audio-file> [model-id ...]")
             exit(2)
@@ -67,6 +71,48 @@ enum SelfTest {
                 failed = true
             }
             exit(failed ? 1 : 0)
+        }
+    }
+
+    /// Records the microphone for a few seconds, transcribes it with the default
+    /// model and writes one JSON line to `out-file`. Used to check echo cancellation:
+    ///   open -n -W Lingo.app --args --self-test record <seconds> <on|off> <out-file>
+    /// (launch through `open` so macOS applies Lingo's own microphone permission).
+    static func recordTest(arguments: [String]) {
+        guard arguments.count == 3, let seconds = Double(arguments[0]) else {
+            print("usage: Lingo --self-test record <seconds> <on|off> <out-file>")
+            exit(2)
+        }
+        let echoCancellation = arguments[1] == "on"
+        let outURL = URL(fileURLWithPath: arguments[2])
+        Task.detached {
+            var result: [String: Any] = ["echo_cancellation_requested": echoCancellation]
+            do {
+                let engine = TranscriptionEngine()
+                try await engine.load(ModelCatalog.defaultModel)
+                let recorder = AudioRecorder()
+                try recorder.start(echoCancellation: echoCancellation)
+                try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                let samples = recorder.stop()
+                let rms = (samples.reduce(0) { $0 + $1 * $1 } / Float(max(samples.count, 1))).squareRoot()
+                result["echo_cancellation_active"] = recorder.echoCancellationActive
+                result["startup_ms"] = Int((recorder.startupLatency ?? -1) * 1000)
+                result["seconds"] = Double(samples.count) / Double(TranscriptionEngine.sampleRate)
+                result["rms"] = rms
+                result["text"] = try await engine.transcribe(samples: samples, language: "zh")
+            } catch {
+                result["error"] = error.localizedDescription
+            }
+            var data = (try? JSONSerialization.data(withJSONObject: result, options: [.sortedKeys])) ?? Data()
+            data.append(0x0A)
+            if let handle = try? FileHandle(forWritingTo: outURL) {
+                handle.seekToEndOfFile()
+                handle.write(data)
+                try? handle.close()
+            } else {
+                try? data.write(to: outURL)
+            }
+            exit(result["error"] == nil ? 0 : 1)
         }
     }
 }
